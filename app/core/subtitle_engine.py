@@ -129,9 +129,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             chunk = words[i:i + chunk_size]
 
             if cfg.is_karaoke:
-                # Dynamic Spoken Word Zoom (Hormozi / MrBeast 130% Zoom effect):
+                # Dynamic Spoken Word Zoom (Hormozi / MrBeast 150% Zoom Pop effect):
                 # For each spoken word in the chunk, generate an active Dialogue event where
-                # the spoken word scales to 130% (\fscx130\fscy130) with the highlight color,
+                # the spoken word scales to 150% (\fscx150\fscy150) with the highlight color,
                 # while other words remain at 100% scale in the base color.
                 for target_idx, active_w in enumerate(chunk):
                     w_start = active_w.start
@@ -150,8 +150,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         if is_bold:
                             w_text = w_text.upper()
                         if w_i == target_idx:
-                            # 130% enlarged spoken word with active highlight color
-                            word_tokens.append(f"{{\\fscx130\\fscy130\\c{primary_ass}}}{w_text}{{\\fscx100\\fscy100\\c{secondary_ass}}}")
+                            # 150% enlarged spoken word with active highlight color
+                            word_tokens.append(f"{{\\fscx150\\fscy150\\c{primary_ass}}}{w_text}{{\\fscx100\\fscy100\\c{secondary_ass}}}")
                         else:
                             # Inactive surrounding word in base color at 100%
                             word_tokens.append(f"{{\\fscx100\\fscy100\\c{secondary_ass}}}{w_text}")

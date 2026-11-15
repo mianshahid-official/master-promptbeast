@@ -76,3 +76,8 @@ test script/
 PROMPTBEAST_FORENSIC_DOCUMENTATION.zip
 COMPETITOR_REPOS/
 
+
+# Chat & Local Summaries
+CHAT_HISTORY_SUMMARY.txt
+*.chat_summary.txt
+

@@ -11,8 +11,188 @@ from app.models.scene import VisualScene
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
+def natural_sort_key(p: Path) -> list:
+    """Sort filenames naturally (e.g. 1, 2, 10 instead of 1, 10, 2)."""
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", p.name)]
+
+
+def extract_scene_number_from_filename(filename: str) -> int:
+    """
+    Extracts the authoritatively intended scene index from an image filename.
+    Handles:
+      - Pure numeric: '001.png', '1.png', '137.png'
+      - Leading prompt prefix: '01 Wide nighttime rooftop 51 floor.png' -> 1
+      - Standard prefixes: 'scene_001.png', 'shot-04.jpg', 'img_12.webp' -> 1, 4, 12
+      - Batch timestamp files: 'generated_images_1794742657231_001.png' -> 1
+      - Trailing numbers: 'walter_rooftop_14.png' -> 14
+    """
+    stem = re.sub(r"\.[a-zA-Z0-9]+$", "", filename).strip()
+
+    # 1. Pure numeric: "001", "1", "137"
+    if stem.isdigit():
+        return int(stem)
+
+    # 2. Leading number prefix e.g. "01 Wide...", "01_Wide...", "001-scene..."
+    m_lead = re.match(r"^(\d{1,4})[\s_\-\.]", stem)
+    if m_lead:
+        return int(m_lead.group(1))
+
+    # 3. Standard scene/shot/image prefix: "scene_001", "shot-02", "img_003"
+    m_prefix = re.search(r"(?:scene|shot|image|img|frame)[\s_\-]*0*(\d{1,4})", stem, re.IGNORECASE)
+    if m_prefix:
+        return int(m_prefix.group(1))
+
+    # 4. Trailing number e.g. "generated_images_1794742657231_001", "walter_rooftop_014"
+    m_trail = re.search(r"[\s_\-]0*(\d{1,4})$", stem)
+    if m_trail:
+        return int(m_trail.group(1))
+
+    # 5. Fallback: all numbers filtering out timestamps (<= 4 digits)
+    all_nums = re.findall(r"\b\d{1,4}\b", stem)
+    if all_nums:
+        return int(all_nums[0])
+
+    return -1
+
+
 class AssetManager:
-    """Discovers generated images and binds them to scenes."""
+    """Discovers generated images, auto-extracts zip batches with sequential numbering, and binds them to scenes."""
+
+    @classmethod
+    def get_highest_scene_number_in_folder(cls, target_dir: Path) -> int:
+        """
+        Scans target_dir for existing image files and returns the highest scene number found.
+        Returns 0 if no valid numbered images exist.
+        """
+        if not target_dir.exists() or not target_dir.is_dir():
+            return 0
+
+        highest = 0
+        for f in target_dir.iterdir():
+            if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
+                fname_lower = f.name.lower()
+                if fname_lower.startswith(("000_thumb", "thumb", "cover")) or "thumbnail" in fname_lower:
+                    continue
+                num = extract_scene_number_from_filename(f.name)
+                if num > highest:
+                    highest = num
+        return highest
+
+    @classmethod
+    def extract_and_sequentially_rename_zips(cls, target_dir: Path) -> int:
+        """
+        Extracts all .zip files in target_dir (and subdirs) using a temporary folder,
+        and sequentially numbers them:
+          - First zip batch: 001..100
+          - Second zip batch: 101..200
+          - Third zip batch: 201..300, etc.
+        Based on the current highest image number already present in target_dir.
+        Returns total number of newly extracted images.
+        """
+        import zipfile
+        import shutil
+        import tempfile
+
+        if not target_dir.exists():
+            return 0
+
+        # Collect all candidate zip files in target_dir (and subdirectories like acc1, acc2)
+        zip_files: List[Path] = []
+        for p in list(target_dir.glob("*.zip")):
+            if not p.name.endswith(".zip.extracted"):
+                zip_files.append(p)
+
+        for sdir in [d for d in target_dir.iterdir() if d.is_dir() and not d.name.startswith(".") and d.name != ".extracted_zips"]:
+            for p in list(sdir.glob("*.zip")):
+                if not p.name.endswith(".zip.extracted"):
+                    zip_files.append(p)
+
+        if not zip_files:
+            return 0
+
+        # Sort zip files deterministically (natural name sort, then mtime)
+        zip_files.sort(key=lambda z: (natural_sort_key(z), z.stat().st_mtime))
+
+        total_extracted = 0
+        archive_dir = target_dir / ".extracted_zips"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        for zip_p in zip_files:
+            try:
+                # Find current highest image number in target_dir before extracting this zip
+                current_highest = cls.get_highest_scene_number_in_folder(target_dir)
+
+                with tempfile.TemporaryDirectory() as temp_dir_str:
+                    temp_dir = Path(temp_dir_str)
+
+                    # 1. Extract zip into temp folder
+                    with zipfile.ZipFile(zip_p, "r") as zf:
+                        zf.extractall(temp_dir)
+
+                    # 2. Find all images inside temp_dir
+                    raw_extracted: List[Path] = []
+                    for f in temp_dir.rglob("*"):
+                        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
+                            raw_extracted.append(f)
+
+                    if not raw_extracted:
+                        continue
+
+                    # 3. Sort extracted images naturally
+                    raw_extracted.sort(key=natural_sort_key)
+
+                    # 4. Check if extracted images already have higher sequence numbers
+                    inner_nums = [extract_scene_number_from_filename(f.name) for f in raw_extracted]
+                    valid_inner_nums = [n for n in inner_nums if n > 0]
+
+                    already_sequenced = (
+                        len(valid_inner_nums) == len(raw_extracted) and
+                        min(valid_inner_nums) > current_highest
+                    )
+
+                    start_idx = current_highest
+
+                    for idx, img_file in enumerate(raw_extracted):
+                        # Handle thumbnail images specially
+                        fname_lower = img_file.name.lower()
+                        if fname_lower.startswith(("000_thumb", "thumb", "cover")) or "thumbnail" in fname_lower:
+                            dest_name = f"000_thumbnail{img_file.suffix.lower()}"
+                            dest_path = target_dir / dest_name
+                            shutil.copy2(img_file, dest_path)
+                            total_extracted += 1
+                            continue
+
+                        if already_sequenced:
+                            target_seq_num = valid_inner_nums[idx]
+                        else:
+                            # Sequentially rename:
+                            # If current_highest is 0 -> 001, 002, ... 100
+                            # If current_highest is 100 -> 101, 102, ... 137
+                            target_seq_num = start_idx + idx + 1
+
+                        dest_name = f"{target_seq_num:03d}{img_file.suffix.lower()}"
+                        dest_path = target_dir / dest_name
+                        shutil.copy2(img_file, dest_path)
+                        total_extracted += 1
+
+                # Move processed zip to archive folder or mark it
+                try:
+                    dest_archive_zip = archive_dir / zip_p.name
+                    if dest_archive_zip.exists():
+                        dest_archive_zip.unlink()
+                    shutil.move(str(zip_p), str(dest_archive_zip))
+                except Exception:
+                    marker = zip_p.with_suffix(".zip.extracted")
+                    if marker.exists():
+                        marker.unlink()
+                    zip_p.rename(marker)
+
+                print(f"[AssetManager] Sequentially extracted {len(raw_extracted)} images from {zip_p.name} -> scenes starting at {start_idx + 1}")
+
+            except Exception as e:
+                print(f"[AssetManager] Error processing zip {zip_p.name}: {e}")
+
+        return total_extracted
 
     @classmethod
     def scan_folder_for_images(cls, folder_path: str) -> List[Path]:
@@ -21,7 +201,7 @@ class AssetManager:
             return []
 
         images = []
-        for file in sorted(path.iterdir()):
+        for file in sorted(path.iterdir(), key=natural_sort_key):
             if file.is_file() and file.suffix.lower() in IMAGE_EXTENSIONS:
                 images.append(file)
         return images
@@ -35,26 +215,39 @@ class AssetManager:
     ) -> Tuple[List[VisualScene], int]:
         """
         Matches images in images_folder to scenes based on scene ID numbers or sequential order.
-        Direct 1-to-1 mapping: Scene #001 binds directly to the first image (001.png).
+        Guarantees 100% accurate 1-to-1 matching and prevents descriptive prompt text numbers
+        from corrupting scene indices.
         Returns (updated_scenes, bound_count).
         """
         image_files = cls.scan_folder_for_images(images_folder)
         if not image_files or not scenes:
             return scenes, 0
 
-        # Build index map: try to extract numbers from filenames e.g. "001", "scene_2", "img-3"
-        number_map: Dict[int, Path] = {}
-        for img in image_files:
-            nums = re.findall(r"\d+", img.stem)
-            if nums:
-                try:
-                    num_val = int(nums[-1])
-                    number_map[num_val] = img
-                except ValueError:
-                    pass
+        # Pass 1: Categorize into direct numbered files vs batch continuation files
+        clean_map: Dict[int, Path] = {}
+        batch_continuation: List[Path] = []
 
-        # Strict 1-to-1 mapping with zero offset
-        offset = 0
+        for img in image_files:
+            if img.name.lower().startswith("generated_images_"):
+                batch_continuation.append(img)
+            else:
+                num_val = extract_scene_number_from_filename(img.name)
+                if num_val > 0:
+                    clean_map[num_val] = img
+
+        # Pass 2: If we have continuation files (e.g. generated_images_..._001.png),
+        # map them with an offset corresponding to the highest clean image number if colliding
+        number_map: Dict[int, Path] = dict(clean_map)
+        if batch_continuation:
+            max_clean = max(clean_map.keys()) if clean_map else 0
+            for b_img in batch_continuation:
+                sub_num = extract_scene_number_from_filename(b_img.name)
+                if sub_num > 0:
+                    if sub_num in clean_map:
+                        target_num = max_clean + sub_num
+                    else:
+                        target_num = sub_num
+                    number_map[target_num] = b_img
 
         bound_count = 0
         updated_scenes = []
@@ -62,7 +255,6 @@ class AssetManager:
         for i, sc in enumerate(scenes):
             sc_copy = sc.model_copy(deep=True)
             scene_num = i + 1
-            # Try matching parsed scene_id e.g. "001" -> 1
             try:
                 scene_id_num = int(re.findall(r"\d+", sc.scene_id)[-1])
             except (IndexError, ValueError):

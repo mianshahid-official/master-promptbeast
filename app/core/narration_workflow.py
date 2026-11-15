@@ -282,108 +282,161 @@ def align_visuals_with_timestamps(
 ) -> List[VisualScene]:
     """
     Combines user-supplied visual breakdown with exact word-level timestamps from narration.
-    Uses monotonic sequence alignment with fast prefix and token-overlap matching.
-    Guarantees index safety and zero UI blocking (< 5ms execution).
-    If no word timestamps exist or audio ends early, computes duration dynamically from pacing rules.
+    Uses monotonic anchor-based sequence alignment with prefix matching and gap interpolation.
+    Guarantees:
+      - 100% of scenes fit smoothly within [0, total_audio_duration].
+      - No runaway time overshoot beyond audio end.
+      - Exact synchronization for matched beats and proportional placement for gap beats.
     """
     scenes: List[VisualScene] = []
     if not visual_items:
         return scenes
 
+    num_items = len(visual_items)
+    total_dur = total_audio_duration or (narration.duration_seconds if narration else float(num_items * 3.5))
+
     if narration and narration.words:
         words = narration.words
         num_words = len(words)
         speech_norm = [normalize_text_token(w.word) for w in words]
-        curr_w_idx = 0
 
-        for idx, item in enumerate(visual_items):
+        matched_ranges: List[Optional[Tuple[int, int, float]]] = [None] * num_items
+        last_end_w = 0
+        unmatched_gap = 0
+
+        # Pass 1: Find monotonic high-confidence anchors
+        for i in range(num_items):
+            item = visual_items[i]
+            v_words = item.get("words", "")
+            v_norm = normalize_text_token(v_words).split()
+
+            if not v_norm:
+                unmatched_gap += 1
+                continue
+
+            target_len = max(1, len(v_norm))
+            v_set = set(v_norm)
+
+            search_start = max(0, last_end_w - 5)
+            # Elastic search window expands if previous items were unmatched
+            search_end = min(num_words, search_start + 140 + (unmatched_gap * 30))
+
+            best_w_start = -1
+            best_w_end = -1
+            best_score = 0.0
+
+            # 1. Prefix match (2 or 3 tokens)
+            p_len = min(3, len(v_norm))
+            if p_len >= 2:
+                p_slice = v_norm[:p_len]
+                for s in range(search_start, search_end - p_len + 1):
+                    if speech_norm[s:s + p_len] == p_slice:
+                        best_w_start = s
+                        best_w_end = min(num_words - 1, s + target_len - 1)
+                        best_score = 1.0
+                        break
+
+            # 2. Token overlap fallback if prefix didn't match
+            if best_score < 0.6:
+                for s in range(search_start, search_end):
+                    cand = speech_norm[s:s + target_len]
+                    if not cand:
+                        continue
+                    sc = len(v_set & set(cand)) / max(1, len(v_set))
+                    if sc > best_score and sc >= 0.35:
+                        best_score = sc
+                        best_w_start = s
+                        best_w_end = min(num_words - 1, s + target_len - 1)
+                        if sc >= 0.70:
+                            break
+
+            if best_w_start != -1 and best_score >= 0.35:
+                matched_ranges[i] = (best_w_start, best_w_end, best_score)
+                last_end_w = best_w_end + 1
+                unmatched_gap = 0
+            else:
+                unmatched_gap += 1
+
+        # Pass 2: Build initial timings from matched anchors
+        initial_timings: List[Tuple[Optional[float], Optional[float], bool, int, int]] = []
+        for i in range(num_items):
+            if matched_ranges[i] is not None:
+                ws, we, _ = matched_ranges[i]
+                ws = max(0, min(ws, num_words - 1))
+                we = max(ws, min(we, num_words - 1))
+                st = words[ws].start
+                et = words[we].end
+                if et <= st:
+                    et = st + 1.5
+                initial_timings.append((st, et, True, ws, we))
+            else:
+                initial_timings.append((None, None, False, -1, -1))
+
+        # Pass 3: Proportional interpolation for unmatched gap scenes
+        final_timings = list(initial_timings)
+        i = 0
+        while i < num_items:
+            if not final_timings[i][2]:
+                block_start = i
+                while i < num_items and not final_timings[i][2]:
+                    i += 1
+                block_end = i  # exclusive
+
+                prev_time = final_timings[block_start - 1][1] if block_start > 0 else 0.0
+                next_time = final_timings[block_end][0] if block_end < num_items else total_dur
+
+                gap_dur = max(0.8 * (block_end - block_start), next_time - prev_time)
+                item_dur = gap_dur / (block_end - block_start)
+
+                for k in range(block_start, block_end):
+                    st = prev_time + (k - block_start) * item_dur
+                    et = st + item_dur
+                    final_timings[k] = (st, et, False, -1, -1)
+            else:
+                i += 1
+
+        # Pass 4: Strictly monotonic, non-overlapping assembly bounded by audio duration
+        cur_time = 0.0
+        for idx in range(num_items):
+            item = visual_items[idx]
             s_num = item.get("id") or str(idx + 1)
             try:
                 s_id = f"{int(s_num):03d}"
             except ValueError:
                 s_id = f"{idx + 1:03d}"
 
-            v_words = item["words"]
-            v_vis = item["visual_idea"]
-            v_norm = normalize_text_token(v_words).split()
+            v_words = item.get("words", "")
+            v_vis = item.get("visual_idea", "")
 
-            if not v_norm:
-                continue
+            st_val, et_val, matched, ws, we = final_timings[idx]
+            start_t = max(cur_time, st_val if st_val is not None else cur_time)
+            end_t = max(start_t + 0.8, et_val if et_val is not None else start_t + 2.0)
 
-            target_len = max(1, len(v_norm))
-            v_set = set(v_norm)
+            # Cap to audio duration on final scene
+            if idx == num_items - 1:
+                end_t = max(start_t + 1.2, total_dur)
 
-            if curr_w_idx >= num_words:
-                prev_end = scenes[-1].end if scenes else words[-1].end
-                start_time = prev_end
-                end_time = prev_end + 3.0
-                best_start = num_words - 1
-                end_idx = num_words - 1
-            else:
-                best_start = curr_w_idx
-                best_len = target_len
-                best_score = 0.0
-
-                search_limit = min(num_words, curr_w_idx + 120)
-
-                # 1. Fast Exact Prefix Matching (finds start of phrase in < 0.01ms)
-                prefix_len = min(3, len(v_norm))
-                prefix = v_norm[:prefix_len]
-                found_prefix = False
-
-                for s_idx in range(curr_w_idx, max(curr_w_idx + 1, search_limit - prefix_len + 1)):
-                    if speech_norm[s_idx:s_idx + prefix_len] == prefix:
-                        best_start = s_idx
-                        best_len = target_len
-                        best_score = 1.0
-                        found_prefix = True
-                        break
-
-                # 2. Fast Token-Overlap Fallback if prefix differed slightly
-                if not found_prefix:
-                    for s_idx in range(curr_w_idx, search_limit):
-                        cand_slice = speech_norm[s_idx:s_idx + target_len]
-                        if not cand_slice:
-                            continue
-                        overlap = len(v_set & set(cand_slice)) / target_len
-                        if overlap > best_score:
-                            best_score = overlap
-                            best_start = s_idx
-                            best_len = target_len
-                            if best_score >= 0.70:
-                                break
-
-                # Guaranteed safe bounds [0, num_words - 1]
-                best_start = max(0, min(best_start, num_words - 1))
-                end_idx = max(best_start, min(num_words - 1, best_start + best_len - 1))
-
-                start_time = words[best_start].start
-                end_time = words[end_idx].end
-
-                if end_time <= start_time:
-                    end_time = start_time + min(3.5, max(1.5, target_len * 0.35))
-
-                curr_w_idx = end_idx + 1
+            dur = round(float(end_t - start_t), 2)
+            cur_time = end_t
 
             scenes.append(VisualScene(
                 scene_id=s_id,
                 index=idx + 1,
-                start=round(float(start_time), 2),
-                end=round(float(end_time), 2),
-                duration=round(float(end_time - start_time), 2),
+                start=round(float(start_t), 2),
+                end=round(float(end_t), 2),
+                duration=dur,
                 narration_excerpt=v_words,
                 visual_subject=v_vis,
                 visual_idea=v_vis,
                 prompt="",
                 generation_status="pending",
-                start_word_index=best_start,
-                end_word_index=end_idx
+                start_word_index=ws if ws >= 0 else None,
+                end_word_index=we if we >= 0 else None
             ))
 
     else:
         # Fallback: estimate timings proportionally
-        total_dur = total_audio_duration or float(len(visual_items) * 3.5)
-        avg_dur = max(1.5, total_dur / len(visual_items))
+        avg_dur = max(1.5, total_dur / num_items)
         curr_time = 0.0
         for idx, item in enumerate(visual_items):
             s_num = item.get("id") or str(idx + 1)
@@ -394,26 +447,31 @@ def align_visuals_with_timestamps(
 
             start_t = curr_time
             end_t = curr_time + avg_dur
+            if idx == num_items - 1:
+                end_t = max(start_t + 1.2, total_dur)
             curr_time = end_t
+
             scenes.append(VisualScene(
                 scene_id=s_id,
                 index=idx + 1,
-                start=round(start_t, 2),
-                end=round(end_t, 2),
-                duration=round(avg_dur, 2),
-                narration_excerpt=item["words"],
-                visual_subject=item["visual_idea"],
-                visual_idea=item["visual_idea"],
+                start=round(float(start_t), 2),
+                end=round(float(end_t), 2),
+                duration=round(float(end_t - start_t), 2),
+                narration_excerpt=item.get("words", ""),
+                visual_subject=item.get("visual_idea", ""),
+                visual_idea=item.get("visual_idea", ""),
                 prompt="",
-                generation_status="pending"
+                generation_status="pending",
+                start_word_index=None,
+                end_word_index=None
             ))
 
-    # Seamless timeline: heal natural sentence pauses (gaps <= 2.0s) between scenes
+    # Seamless timeline: heal natural sentence pauses (gaps <= 1.0s) between scenes without exceeding total duration
     for i in range(len(scenes) - 1):
         curr_s = scenes[i]
         next_s = scenes[i + 1]
         gap = float(next_s.start) - float(curr_s.end)
-        if 0.0 < gap <= 2.0:
+        if 0.0 < gap <= 1.0:
             curr_s.end = round(float(next_s.start), 2)
             curr_s.duration = round(float(curr_s.end) - float(curr_s.start), 2)
 

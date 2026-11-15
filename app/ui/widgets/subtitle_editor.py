@@ -378,12 +378,12 @@ class SubtitleEditor(QWidget):
         out = self.config.outline_color_hex
 
         if self.config.is_karaoke:
-            active_size = int(round(size * 1.30))
+            active_size = int(round(size * 1.50))
             text_html = (
-                f"<div style='font-family: {font}; font-size: {size}px; font-weight: bold; text-shadow: 2px 2px 3px {out}; text-align: center; line-height: 1.4;'>"
-                f"<span style='color: {pri}; font-size: {size}px;'>EVERY </span>"
-                f"<span style='color: {hl}; font-size: {active_size}px; font-weight: 900; text-decoration: underline;'>SINGLE </span>"
-                f"<span style='color: {pri}; font-size: {size}px;'>DETAIL COUNTS</span>"
+                f"<div style='font-family: {font}; font-size: {size}px; font-weight: 800; text-shadow: 2px 2px 4px {out}; text-align: center; line-height: 1.5;'>"
+                f"<span style='color: {pri}; font-size: {size}px; vertical-align: middle;'>EVERY </span>"
+                f"<span style='color: {hl}; font-size: {active_size}px; font-weight: 900; vertical-align: middle; padding: 2px 4px; text-shadow: 0 0 10px {hl}, 2px 2px 4px {out};'>SINGLE </span>"
+                f"<span style='color: {pri}; font-size: {size}px; vertical-align: middle;'>DETAIL COUNTS</span>"
                 f"</div>"
             )
         else:

@@ -374,11 +374,8 @@ class ImageAssetPanel(QWidget):
         if not self.scenes:
             img_exts = (".png", ".jpg", ".jpeg", ".webp")
             raw_files = [f for f in Path(self.images_folder).iterdir() if f.suffix.lower() in img_exts]
-            import re
-            def sort_key(p):
-                nums = re.findall(r"\d+", p.name)
-                return int(nums[0]) if nums else p.name.lower()
-            img_files = sorted([str(f.resolve()) for f in raw_files], key=lambda x: sort_key(Path(x)))
+            from app.core.asset_manager import natural_sort_key
+            img_files = sorted([str(f.resolve()) for f in raw_files], key=lambda x: natural_sort_key(Path(x)))
             if img_files:
                 dur = 5.0
                 auto_scenes = []
@@ -408,10 +405,10 @@ class ImageAssetPanel(QWidget):
         self.images_updated.emit(self.scenes)
 
     def _refresh_cards(self):
-        # Clear existing cards cleanly
+        # Clear existing cards cleanly without promoting to desktop windows
         for card in self._cards:
             self.grid_layout.removeWidget(card)
-            card.setParent(None)
+            card.hide()
             card.deleteLater()
         self._cards.clear()
 

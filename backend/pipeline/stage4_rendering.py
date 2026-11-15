@@ -68,18 +68,15 @@ class Stage4RenderingManager:
                 assigned_files.add(f.name)
                 continue
 
-            # Regex for number in filename: '001', 'scene_002', 'shot3'
-            num_matches = re.findall(r"\d+", stem)
-            if num_matches:
-                # Try the last or first number
-                for num_str in [num_matches[-1], num_matches[0]]:
-                    val = int(num_str)
-                    if val in scenes_by_num:
-                        matched_s = scenes_by_num[val]
-                        matched_s.image_path = str(f.resolve())
-                        assigned_scenes.add(matched_s.scene_id)
-                        assigned_files.add(f.name)
-                        break
+            # Accurate extraction: handles '01_Wide...', '001.png', 'scene_002', 'shot3'
+            from app.core.asset_manager import extract_scene_number_from_filename
+            val = extract_scene_number_from_filename(f.name)
+            if val in scenes_by_num:
+                matched_s = scenes_by_num[val]
+                matched_s.image_path = str(f.resolve())
+                assigned_scenes.add(matched_s.scene_id)
+                assigned_files.add(f.name)
+                continue
 
         missing_ids = [s.scene_id for s in scenes if s.scene_id not in assigned_scenes and not s.image_path]
         unassigned = [f.name for f in files if f.name not in assigned_files]

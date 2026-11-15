@@ -42,11 +42,10 @@ from app.models.timeline import NarrationData, WordTimestamp
 from app.core.timestamp_parser import TimestampParser
 
 
-def natural_sort_key(p: Union[Path, str]):
-    """Natural sorting key: puts numbered filenames in numerical order (001, 002, 010)."""
+def natural_sort_key(p: Union[Path, str]) -> list:
+    """Natural sorting key: puts numbered filenames in numerical order (001, 002, 010, 100)."""
     name = Path(p).name
-    nums = re.findall(r"\d+", name)
-    return (0, int(nums[0]), name.lower()) if nums else (1, 0, name.lower())
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", name)]
 
 
 class ImagesPanel(QWidget):
@@ -905,37 +904,12 @@ class ImagesPanel(QWidget):
                 )
 
     def _auto_extract_zip_files(self, target_dir: Path) -> int:
-        """Automatically extracts any .zip files containing generated images directly into target_dir."""
-        if not target_dir.exists():
-            return 0
-
-        total_extracted = 0
-        for zip_p in list(target_dir.glob("*.zip")):
-            try:
-                extracted = 0
-                with zipfile.ZipFile(zip_p, "r") as zf:
-                    for member in zf.infolist():
-                        if member.is_dir():
-                            continue
-                        fname = Path(member.filename).name
-                        if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
-                            dest_file = target_dir / fname
-                            # Prevent overwriting if file with same name exists from another batch/zip
-                            if dest_file.exists():
-                                dest_file = target_dir / f"{zip_p.stem}_{fname}"
-                            with zf.open(member) as s_f, open(dest_file, "wb") as d_f:
-                                shutil.copyfileobj(s_f, d_f)
-                            extracted += 1
-                if extracted > 0:
-                    marker = zip_p.with_suffix(".zip.extracted")
-                    if marker.exists():
-                        marker.unlink()
-                    zip_p.rename(marker)
-                    total_extracted += extracted
-                    print(f"[SceneSync] Auto-extracted {extracted} images from {zip_p.name} into {target_dir.name}")
-            except Exception as e:
-                print(f"[SceneSync] ZIP auto-extract notice for {zip_p.name}: {e}")
-        return total_extracted
+        """
+        Automatically extracts any .zip files containing generated images into a temp directory,
+        sequentially numbers them (001..100, 101..200, 201..300), and moves them into target_dir.
+        """
+        from app.core.asset_manager import AssetManager
+        return AssetManager.extract_and_sequentially_rename_zips(target_dir)
 
     def _on_import_downloads(self):
         """
@@ -1329,26 +1303,26 @@ class ImagesPanel(QWidget):
 
         existing_scenes = self.scenes or []
         scenes: List[VisualScene] = []
-
-        # Direct 1-to-1 sync: All scanned images map to story scenes without thumbnail offset
-        video_images = self.image_files
         self.thumbnail_image_path = None
 
-        total_video_images = len(video_images)
-        time_per_image = duration / float(max(1, total_video_images))
-
-        for idx, img_path in enumerate(video_images):
-            if idx < len(existing_scenes) and existing_scenes[idx].visual_subject:
-                sc = existing_scenes[idx].model_copy(deep=True)
-                sc.image_path = img_path
-            else:
+        # Authoritative 1-to-1 sync: Use AssetManager to bind images by exact scene number
+        if existing_scenes and self.images_folder:
+            from app.core.asset_manager import AssetManager
+            bound_scenes, _ = AssetManager.auto_bind_images_to_scenes(existing_scenes, self.images_folder)
+            scenes = bound_scenes
+        else:
+            # Fallback: create fresh scenes from scanned images paced evenly across audio
+            video_images = self.image_files
+            total_video_images = len(video_images)
+            time_per_image = duration / float(max(1, total_video_images))
+            for idx, img_path in enumerate(video_images):
                 start_t = round(idx * time_per_image, 2)
                 end_t = (
                     round((idx + 1) * time_per_image, 2)
                     if idx < total_video_images - 1
                     else round(duration, 2)
                 )
-                sc = VisualScene(
+                scenes.append(VisualScene(
                     scene_id=f"{idx+1:03d}",
                     start=start_t,
                     end=end_t,
@@ -1357,8 +1331,7 @@ class ImagesPanel(QWidget):
                     narration_excerpt=f"Visual Beat {idx+1}",
                     image_path=img_path,
                     prompt=f"Scene {idx+1} matching {Path(img_path).name}",
-                )
-            scenes.append(sc)
+                ))
 
         self.scenes = scenes
         self._populate_table()

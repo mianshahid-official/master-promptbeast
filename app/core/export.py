@@ -39,7 +39,17 @@ def copy_to_system_clipboard(text: str) -> bool:
     # 2. Windows native clip.exe fallback (100% reliable on Windows OS)
     if sys.platform == "win32":
         try:
-            p = subprocess.Popen(["clip"], stdin=subprocess.PIPE, shell=False)
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            p = subprocess.Popen(
+                ["clip"],
+                stdin=subprocess.PIPE,
+                shell=False,
+                startupinfo=startupinfo,
+                creationflags=creationflags
+            )
             p.communicate(input=text.encode("utf-16le"))
             if p.returncode == 0:
                 success = True
@@ -233,14 +243,17 @@ class StoryboardExporter:
         Generates clean prompts_only.txt:
         Each prompt is strictly on a single clean line (1 scene = 1 line), extracting the pure
         visual prompt starting directly from Scene 001. No thumbnail prompt.
-        Strict contract: No metadata, no headers, no delimiters, no internal newlines.
+        Single batch for all prompts with 2-digit zero-padded numbering: '01 ', '02 ' ... '100 ', '137 '.
         """
         lines = []
-        for sc in scenes:
+        for idx, sc in enumerate(scenes):
             raw = sc.prompt.strip() if sc.prompt else (sc.visual_subject or "")
             clean_p = cls.clean_prompt_single_line(raw)
+            # Remove any existing leading numbers or scene prefixes to prevent duplicate numbering
+            clean_p = re.sub(r"^(?:scene\s*)?\d+[\.\:\s\-]+", "", clean_p, flags=re.IGNORECASE).strip()
             if clean_p:
-                lines.append(clean_p)
+                prefix = f"{idx + 1:02d} "
+                lines.append(f"{prefix}{clean_p}")
         return "\n".join(lines) + ("\n" if lines else "")
 
     @classmethod

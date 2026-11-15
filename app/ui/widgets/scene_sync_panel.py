@@ -65,11 +65,10 @@ from app.core.narration_workflow import (
 )
 
 
-def natural_sort_key(p: Union[Path, str]):
-    """Natural sorting key: puts numbered filenames in numerical order (001, 002, 010)."""
+def natural_sort_key(p: Union[Path, str]) -> list:
+    """Natural sorting key: puts numbered filenames in numerical order (001, 002, 010, 100)."""
     name = Path(p).name
-    nums = re.findall(r"\d+", name)
-    return (0, int(nums[0]), name.lower()) if nums else (1, 0, name.lower())
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", name)]
 
 
 class PasteStoryboardDialog(QDialog):
@@ -1394,24 +1393,25 @@ class SceneSyncPanel(QWidget):
                 return
 
     def _on_import_downloads(self):
-        """Unpacks ZIP files in images folder or imports from Downloads."""
+        """Unpacks ZIP files sequentially into images folder using temp folder renaming."""
         if not self.images_folder:
             self._on_browse_images_folder()
             return
         img_dir = Path(self.images_folder)
-        zips = list(img_dir.glob("*.zip"))
-        if not zips:
-            # Check user downloads folder
+        from app.core.asset_manager import AssetManager
+        
+        # If no zips in images folder, copy any from Downloads
+        if not list(img_dir.glob("*.zip")):
             dl = Path.home() / "Downloads"
-            zips = list(dl.glob("*.zip"))
-        unpacked = 0
-        for z in zips:
-            try:
-                with zipfile.ZipFile(z, "r") as zf:
-                    zf.extractall(img_dir)
-                    unpacked += 1
-            except Exception:
-                pass
+            if dl.exists():
+                for z in dl.glob("*.zip"):
+                    try:
+                        import shutil
+                        shutil.copy2(z, img_dir / z.name)
+                    except Exception:
+                        pass
+
+        unpacked = AssetManager.extract_and_sequentially_rename_zips(img_dir)
         self._scan_images()
         self._auto_sync_pipeline()
-        QMessageBox.information(self, "Unpack Completed", f"Scanned and unpacked {unpacked} archive(s). Total images: {len(self.image_files)}")
+        QMessageBox.information(self, "Unpack Completed", f"Scanned and extracted {unpacked} image(s) sequentially. Total images: {len(self.image_files)}")

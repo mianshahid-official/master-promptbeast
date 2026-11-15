@@ -41,10 +41,11 @@ Import Audio & Script JSON ➔ Provide Narration & Visual Ideas ➔ Extract Dyna
 ## ⚡ Core Features
 
 - **FrameForge Red & Black Aesthetic**: Professional cinematic dark theme (`#101010` canvas, `#E53935` accents, clean neutral panels) with zero unwanted borders and responsive layouts.
-- **Dynamic Spoken Word Karaoke Zoom**: Subtitles automatically zoom the currently spoken word to 130% (`{\fscx130\fscy130}`) in sync with narration, matching the high-retention Hormozi / MrBeast video editing standard.
+- **Dynamic Spoken Word Karaoke Zoom**: Subtitles automatically zoom the currently spoken word to 150% (`{\fscx150\fscy150}`) in sync with narration, matching the high-retention Hormozi / MrBeast video editing standard.
 - **Random Cinematic Transitions**: Built-in dynamic transitions between scenes (Dip to Black, Soft Dissolve / Crossfade, Soft Flash) that maintain 100% frame-perfect audio and subtitle synchronization.
+- **Single Bulk Prompt Export**: Exports all scene prompts in a single bulk batch (no artificial 100-item splits), prefixed with two/three-digit numbering (`01 `, `02 `, ... `137 `) for instant batch image generation.
 - **Bidirectional Asset Ingestion**: Drop or select your voiceover audio (`speech.mp3`) and Script Beanie automatically auto-detects and pairs matching word-level timestamp JSON (`speech.json`) in the same directory.
-- **Instant Monotonic Phonetic Alignment**: Paste natural storyboard lines (e.g. `Visual 1 Words: ... Visual: ...`). High-performance token matching aligns 150+ visual beats in milliseconds without freezing.
+- **Instant Monotonic Phonetic Alignment**: Paste natural storyboard lines (e.g. `Visual 1 Words: ... Visual: ...`). Robust anchor-based sequence alignment guarantees 100% boundary safety and zero desynchronization across hundreds of scenes.
 - **Curated Visual Styles & Master Prompts**: Built-in master prompt directives with one-click copy for Zombie Survival, 3D Red & Blue Stickman, What-If Flat Vector, and Century-Old Photographs.
 - **Multi-Key Groq Pooling**: Rotates multiple Groq API keys automatically with real-time rate limit tracking (HTTP 429), exponential cooldowns, and batch recovery.
 - **Local FFmpeg Video Compilation**: Zero external GPU or cloud rendering dependencies for video output. Assembles assigned images, audio, Ken Burns camera motion, transitions, and animated karaoke subtitles into an upload-ready MP4.

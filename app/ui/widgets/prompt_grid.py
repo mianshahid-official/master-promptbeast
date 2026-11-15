@@ -869,29 +869,18 @@ class PromptGridWidget(QWidget):
     def _update_batch_combo(self):
         if not hasattr(self, "batch_combo"):
             return
-        total = len(self.scenes)
+        # Bulk single-batch mode: hide batch dropdown and keep clean single Copy All Prompts
         self.batch_combo.clear()
-        if total > 100:
-            self.batch_combo.addItem(f"All Prompts (1–{total})", (0, total))
-            batch_size = 100
-            for b_idx in range(0, total, batch_size):
-                acc_num = (b_idx // batch_size) + 1
-                start_n = b_idx + 1
-                end_n = min(b_idx + batch_size, total)
-                self.batch_combo.addItem(f"Acc {acc_num} ({start_n}–{end_n})", (b_idx, end_n))
-            self.batch_combo.setVisible(True)
-            self.copy_all_btn.setText("📋 Copy Prompts")
-        else:
-            self.batch_combo.setVisible(False)
-            self.copy_all_btn.setText("📋 Copy All Prompts")
+        self.batch_combo.setVisible(False)
+        self.copy_all_btn.setText("📋 Copy All Prompts")
 
     def _rebuild_grid(self):
-        # Clear existing items cleanly
+        # Clear existing items cleanly without promoting to desktop windows
         while self.grid_layout.count() > 0:
             item = self.grid_layout.takeAt(0)
             w = item.widget()
             if w:
-                w.setParent(None)
+                w.hide()
                 w.deleteLater()
 
         self._card_widgets.clear()
@@ -930,7 +919,7 @@ class PromptGridWidget(QWidget):
         cols = 3  # Responsive 3 cards per row
 
         for i, sc in enumerate(self.scenes):
-            card = PromptCardWidget(sc)
+            card = PromptCardWidget(sc, parent=self.grid_container)
             card.edit_requested.connect(self._on_card_edited)
             card.delete_requested.connect(self._on_card_deleted)
             card.retry_requested.connect(lambda sc_item: self.retry_scene_requested.emit(sc_item))
@@ -978,37 +967,12 @@ class PromptGridWidget(QWidget):
             QMessageBox.information(self, "No Scenes", "There are no prompts to copy.")
             return
 
-        target_scenes = self.scenes
-        batch_label = "All"
-        is_first_batch = True
-        if hasattr(self, "batch_combo") and self.batch_combo.isVisible():
-            data = self.batch_combo.currentData()
-            if data and isinstance(data, (tuple, list)):
-                s_idx, e_idx = data
-                target_scenes = self.scenes[s_idx:e_idx]
-                batch_label = self.batch_combo.currentText().split()[0]
-                if s_idx > 0:
-                    is_first_batch = False
-
-        lines = []
-        from app.core.export import StoryboardExporter
-
-        for s in target_scenes:
-            raw_p = s.prompt.strip() if s.prompt else (s.visual_subject or "")
-            # Clean out any unprompted placeholder text before copying
-            raw_p = re.sub(r"\[Planned Visual Shot\s*[—-]\s*Awaiting Batch Prompt Gen\]\s*", "", raw_p, flags=re.IGNORECASE).strip()
-            if not raw_p:
-                raw_p = s.visual_subject or s.narration_excerpt or ""
-            clean_p = StoryboardExporter.clean_prompt_single_line(raw_p)
-            if clean_p:
-                lines.append(clean_p)
-
-        full_text = "\n".join(lines)
-        from app.core.export import copy_to_system_clipboard
+        from app.core.export import StoryboardExporter, copy_to_system_clipboard
+        full_text = StoryboardExporter.export_to_prompts_only(self.scenes)
         copy_to_system_clipboard(full_text)
 
-        copied_cnt = len(lines)
-        self.copy_all_btn.setText(f"✓ Copied {copied_cnt} Prompts ({batch_label})!")
+        copied_cnt = len(self.scenes)
+        self.copy_all_btn.setText(f"✓ Copied {copied_cnt} Prompts!")
         self.copy_all_btn.setStyleSheet("background-color: #222222; color: #FF4B4B; border: 1px solid #E53935; font-weight: bold; border-radius: 6px; padding: 0 12px; font-size: 11px;")
-        QTimer.singleShot(2500, lambda: self.copy_all_btn.setText("📋 Copy Prompts" if len(self.scenes) > 100 else "📋 Copy All Prompts"))
+        QTimer.singleShot(2500, lambda: self.copy_all_btn.setText("📋 Copy All Prompts"))
 

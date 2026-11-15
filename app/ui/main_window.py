@@ -47,6 +47,8 @@ from PySide6.QtWidgets import (
 
 from app.ui.widgets.custom_combo import PBComboBox
 from app.ui.widgets.sidebar_nav import SidebarNav
+from app.ui.widgets.top_pipeline_header import TopPipelineHeader
+from app.ui.widgets.settings_page import SettingsProfilesPage
 from app.ui.widgets.live_board_panel import LiveBoardPanel
 from app.ui.widgets.profiles_panel import ProfilesManagerPanel
 from app.ui.widgets.style_thumbnail_matrix import StyleThumbnailMatrix
@@ -362,7 +364,13 @@ class MainWindow(QMainWindow):
         cc_layout.setContentsMargins(0, 0, 0, 0)
         cc_layout.setSpacing(0)
 
-        # 1. Top Bar
+        # 1. Top Pipeline Header (FrameForge Red & Black Header with 4-Step Stepper & Settings)
+        self.pipeline_header = TopPipelineHeader(self)
+        self.pipeline_header.step_selected.connect(self._on_pipeline_step_selected)
+        self.pipeline_header.settings_clicked.connect(self._on_pipeline_settings_clicked)
+        cc_layout.addWidget(self.pipeline_header)
+
+        # Legacy top bar (kept hidden for backward compatibility)
         cc_layout.addWidget(self.top_bar_widget)
 
         # 2. Main Scroll Area for complete single-page dashboard
@@ -876,7 +884,7 @@ class MainWindow(QMainWindow):
 
         main_scroll.setWidget(scroll_widget)
 
-        # Body: Sidebar Navigation on Left + Stacked Pages on Right
+        # Body: Sidebar Navigation on Left (Hidden for full top-stepper pipeline) + Stacked Pages on Right
         body_container = QWidget()
         body_layout = QHBoxLayout(body_container)
         body_layout.setContentsMargins(0, 0, 0, 0)
@@ -884,6 +892,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar = SidebarNav(self)
         self.sidebar.page_changed.connect(self._on_sidebar_nav_changed)
+        self.sidebar.setVisible(False)
         body_layout.addWidget(self.sidebar)
 
         self.stacked_pages = QStackedWidget(self)
@@ -908,6 +917,12 @@ class MainWindow(QMainWindow):
 
         # SYSTEM: Console
         self.stacked_pages.addWidget(self.console_page)
+
+        # 06 — Full Page Settings & Profiles Management (Merged, No Dialogs)
+        self.settings_profiles_page = SettingsProfilesPage(self)
+        self.settings_profiles_page.navigate_back.connect(self._on_settings_navigate_back)
+        self.settings_profiles_page.settings_saved.connect(self._on_settings_saved_from_page)
+        self.stacked_pages.addWidget(self.settings_profiles_page)
 
         body_layout.addWidget(self.stacked_pages, 1)
         cc_layout.addWidget(body_container, 1)
@@ -1121,8 +1136,12 @@ class MainWindow(QMainWindow):
             self.sidebar._buttons[k].setChecked(True)
         if k in ("production", "01"):
             self.stacked_pages.setCurrentWidget(self.main_scroll)
+            if hasattr(self, "pipeline_header"):
+                self.pipeline_header.set_active_step("audio_script")
         elif k in ("studio", "02", "scene_studio"):
             self.stacked_pages.setCurrentWidget(self.studio_page)
+            if hasattr(self, "pipeline_header"):
+                self.pipeline_header.set_active_step("studio")
             scenes = []
             if hasattr(self, "project") and self.project and self.project.state.scenes:
                 scenes = self.project.state.scenes
@@ -1200,8 +1219,12 @@ class MainWindow(QMainWindow):
         elif k in ("images", "generate_images", "03", "image_assets"):
             self.stacked_pages.setCurrentWidget(self.images_panel)
             self._prepare_images_panel()
+            if hasattr(self, "pipeline_header"):
+                self.pipeline_header.set_active_step("render")
         elif k in ("deliverables", "04", "final_render"):
             self.stacked_pages.setCurrentWidget(self.tab4_render)
+            if hasattr(self, "pipeline_header"):
+                self.pipeline_header.set_active_step("render")
             if hasattr(self, "images_panel") and self.images_panel.scenes:
                 if hasattr(self, "project") and self.project:
                     self.project.state.scenes = self.images_panel.scenes
@@ -1212,8 +1235,17 @@ class MainWindow(QMainWindow):
                     self.project.state.narration
                 )
         elif k in ("profiles", "05", "profiles_accounts"):
-            self.stacked_pages.setCurrentWidget(self.profiles_panel)
-            self.profiles_panel.refresh_profiles()
+            if hasattr(self, "settings_profiles_page"):
+                self._last_active_page = self.stacked_pages.currentWidget()
+                self.stacked_pages.setCurrentWidget(self.settings_profiles_page)
+                self.settings_profiles_page.tabs.setCurrentIndex(0)
+                if hasattr(self.settings_profiles_page, "refresh_view"):
+                    self.settings_profiles_page.refresh_view()
+                if hasattr(self, "pipeline_header"):
+                    self.pipeline_header.set_active_step("settings")
+            else:
+                self.stacked_pages.setCurrentWidget(self.profiles_panel)
+                self.profiles_panel.refresh_profiles()
         elif k == "scene_sync":
             self.stacked_pages.setCurrentWidget(self.scene_sync_panel)
             self._prepare_scene_sync_panel()
@@ -1221,22 +1253,71 @@ class MainWindow(QMainWindow):
             self.stacked_pages.setCurrentWidget(self.console_page)
         elif k == "settings":
             self._on_open_settings()
-            # Restore active page highlight in sidebar
-            curr = self.stacked_pages.currentWidget()
-            if curr == self.main_scroll:
-                self.sidebar.set_current_page("production")
-            elif curr == self.studio_page:
-                self.sidebar.set_current_page("studio")
-            elif curr == self.images_panel:
-                self.sidebar.set_current_page("images")
-            elif curr == self.tab4_render:
-                self.sidebar.set_current_page("deliverables")
-            elif curr == self.profiles_panel:
-                self.sidebar.set_current_page("profiles")
-            elif curr == self.scene_sync_panel:
-                self.sidebar.set_current_page("scene_sync")
-            elif curr == self.console_page:
-                self.sidebar.set_current_page("console")
+
+    def _on_pipeline_step_selected(self, step_id: str):
+        """Switches views when a step is clicked in the top pipeline header."""
+        if step_id == "audio_script":
+            self.stacked_pages.setCurrentWidget(self.main_scroll)
+            if hasattr(self, "main_scroll") and self.main_scroll.verticalScrollBar():
+                self.main_scroll.verticalScrollBar().setValue(0)
+            self.pipeline_header.set_active_step("audio_script")
+        elif step_id == "visual_style":
+            self.stacked_pages.setCurrentWidget(self.main_scroll)
+            if hasattr(self, "workflow_panel") and hasattr(self.workflow_panel, "sec4_group"):
+                self.main_scroll.ensureWidgetVisible(self.workflow_panel.sec4_group)
+            self.pipeline_header.set_active_step("visual_style")
+        elif step_id in ("studio", "prompts_flow"):
+            self._on_sidebar_nav_changed("studio")
+            self.pipeline_header.set_active_step("studio")
+        elif step_id in ("render", "images_render"):
+            scenes = []
+            if hasattr(self, "project") and self.project and self.project.state.scenes:
+                scenes = self.project.state.scenes
+            elif hasattr(self, "workflow_panel") and self.workflow_panel.scenes:
+                scenes = self.workflow_panel.scenes
+
+            has_images = any(s.image_path and Path(s.image_path).exists() for s in scenes) if scenes else False
+
+            if self.stacked_pages.currentWidget() == self.images_panel:
+                self._on_sidebar_nav_changed("deliverables")
+            elif not has_images:
+                self._on_sidebar_nav_changed("images")
+            else:
+                self._on_sidebar_nav_changed("deliverables")
+            self.pipeline_header.set_active_step("render")
+
+    def _on_pipeline_settings_clicked(self):
+        """Navigates to the full-page unified Settings & Profiles management view."""
+        self._last_active_page = self.stacked_pages.currentWidget()
+        self.stacked_pages.setCurrentWidget(self.settings_profiles_page)
+        if hasattr(self, "settings_profiles_page") and hasattr(self.settings_profiles_page, "refresh_view"):
+            self.settings_profiles_page.refresh_view()
+        self.pipeline_header.set_active_step("settings")
+
+    def _on_settings_navigate_back(self):
+        """Returns back from full-page Settings to previous active page."""
+        target = getattr(self, "_last_active_page", None) or self.main_scroll
+        if target == self.settings_profiles_page:
+            target = self.main_scroll
+        self.stacked_pages.setCurrentWidget(target)
+        if target == self.main_scroll:
+            self.pipeline_header.set_active_step("audio_script")
+        elif target == self.studio_page:
+            self.pipeline_header.set_active_step("studio")
+        elif target in (self.images_panel, self.tab4_render):
+            self.pipeline_header.set_active_step("render")
+        else:
+            self.pipeline_header.set_active_step("audio_script")
+
+    def _on_settings_saved_from_page(self, new_settings):
+        """Handles settings saved notification from the settings page."""
+        self.settings = new_settings
+        self._check_cloud_connection()
+        if hasattr(self, "pipeline_header"):
+            from app.ai.groq_engine import get_groq_engine
+            groq = get_groq_engine()
+            num_keys = len(groq.api_keys) if groq.api_keys else 11
+            self.pipeline_header.sub_title.setText(f"PromptBeast Pro • {num_keys}x Groq Pool")
 
     def _on_proceed_from_studio_to_images(self):
         """Passes latest scenes from prompt grid into project state and proceeds to Images page."""
@@ -2589,28 +2670,17 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"[Export] Project export notice: {e}")
 
-            # If items exceed 100, generate individual batch files for each Google account (e.g. 1-100, 101-200)
+            # Export single bulk batch prompts file (no split accounts)
             try:
-                batch_size = 100
-                all_prompt_lines = [ln.strip() for ln in prompts_clean.splitlines() if ln.strip()]
-                total_items = len(all_prompt_lines)
-                if total_items > batch_size:
-                    for b_idx in range(0, total_items, batch_size):
-                        acc_num = (b_idx // batch_size) + 1
-                        sub_lines = all_prompt_lines[b_idx : b_idx + batch_size]
-                        start_num = b_idx + 1
-                        end_num = min(b_idx + batch_size, total_items)
-                        batch_fname = f"prompts_acc{acc_num}_{start_num:03d}_to_{end_num:03d}.txt"
-                        batch_content = "\n".join(sub_lines) + "\n"
-                        with open(p_dir / batch_fname, "w", encoding="utf-8") as bpf:
-                            bpf.write(batch_content)
-                        # Also place directly in account image subfolder
-                        acc_img_dir = img_dir if acc_num == 1 else (img_dir / f"acc{acc_num}")
-                        acc_img_dir.mkdir(parents=True, exist_ok=True)
-                        with open(acc_img_dir / batch_fname, "w", encoding="utf-8") as bpf:
-                            bpf.write(batch_content)
+                # Always save canonical single-batch prompts file
+                with open(p_dir / "prompts_only.txt", "w", encoding="utf-8") as pf:
+                    pf.write(prompts_clean + "\n")
+                with open(p_dir / "prompts.txt", "w", encoding="utf-8") as pf:
+                    pf.write(prompts_clean + "\n")
+                with open(img_dir / "prompts_only.txt", "w", encoding="utf-8") as pf:
+                    pf.write(prompts_clean + "\n")
             except Exception as e:
-                print(f"[Export] Multi-account batch files notice: {e}")
+                print(f"[Export] Bulk batch prompts export notice: {e}")
 
             # Auto-set download directory for Chrome profiles acc1..acc6
             for i in range(1, 7):
@@ -3063,6 +3133,15 @@ class MainWindow(QMainWindow):
                     ProjectManager.clear_job_in_progress(proj_dir)
 
     def _on_open_settings(self):
+        if hasattr(self, "settings_profiles_page") and hasattr(self, "stacked_pages"):
+            self._last_active_page = self.stacked_pages.currentWidget()
+            self.stacked_pages.setCurrentWidget(self.settings_profiles_page)
+            if hasattr(self.settings_profiles_page, "refresh_view"):
+                self.settings_profiles_page.refresh_view()
+            self.settings_profiles_page.tabs.setCurrentIndex(1)
+            if hasattr(self, "pipeline_header"):
+                self.pipeline_header.set_active_step("settings")
+            return
         dlg = SettingsDialog(self)
         if dlg.exec():
             self.settings = SettingsManager.load_settings()

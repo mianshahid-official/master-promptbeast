@@ -70,6 +70,29 @@ class RenderPanel(QWidget):
         hdr.addWidget(header_lbl)
         hdr.addStretch()
 
+        self.btn_manage_images = QPushButton("🖼️ Manage / Sync Images")
+        self.btn_manage_images.setFixedHeight(26)
+        self.btn_manage_images.setCursor(Qt.PointingHandCursor)
+        self.btn_manage_images.setStyleSheet("""
+            QPushButton {
+                background-color: #222222;
+                color: #D1D5DB;
+                border: 1px solid #333333;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 0 10px;
+                margin-right: 8px;
+            }
+            QPushButton:hover {
+                background-color: #2A2A2A;
+                border-color: #E53935;
+                color: #FFFFFF;
+            }
+        """)
+        self.btn_manage_images.clicked.connect(self._on_jump_to_images)
+        hdr.addWidget(self.btn_manage_images)
+
         ffmpeg_ok = VideoRenderer.is_ffmpeg_available()
         ffmpeg_lbl = QLabel("✓ FFmpeg Ready" if ffmpeg_ok else "✗ FFmpeg Missing")
         ffmpeg_lbl.setStyleSheet("color: #FF4B4B; font-size: 11px; font-weight: bold;" if ffmpeg_ok else "color: #EF5350; font-size: 11px; font-weight: bold;")
@@ -333,6 +356,11 @@ class RenderPanel(QWidget):
         splitter.setSizes([540, 660])
         root_layout.addWidget(splitter, 1)
 
+    def _on_jump_to_images(self):
+        win = self.window()
+        if win and hasattr(win, "_on_sidebar_nav_changed"):
+            win._on_sidebar_nav_changed("images")
+
     def _on_choose_audio_clicked(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -553,12 +581,8 @@ class RenderPanel(QWidget):
             if folder_to_use and Path(folder_to_use).exists():
                 img_exts = (".png", ".jpg", ".jpeg", ".webp")
                 raw_files = [f for f in Path(folder_to_use).iterdir() if f.suffix.lower() in img_exts]
-                # Natural sort by number if any
-                import re
-                def sort_key(p):
-                    nums = re.findall(r"\d+", p.name)
-                    return int(nums[0]) if nums else p.name.lower()
-                img_files = sorted([str(f.resolve()) for f in raw_files], key=lambda x: sort_key(Path(x)))
+                from app.core.asset_manager import natural_sort_key
+                img_files = sorted([str(f.resolve()) for f in raw_files], key=lambda x: natural_sort_key(Path(x)))
 
                 if img_files:
                     total_dur = 60.0
@@ -640,6 +664,19 @@ class RenderPanel(QWidget):
         proj_name = getattr(project, "name", "project") if project else "project"
         suffix = "_subtitles.mp4" if has_subtitles else "_nosubtitles.mp4"
         output_file = str((renders_dir / f"{proj_name}{suffix}").resolve())
+
+        # Authoritatively verify/re-bind scene images if an images directory is available
+        img_dir_cand = None
+        if project and getattr(project, "project_dir", None):
+            p_img = Path(project.project_dir) / "images"
+            if p_img.exists():
+                img_dir_cand = str(p_img.resolve())
+        elif hasattr(self, "images_folder") and self.images_folder and Path(self.images_folder).exists():
+            img_dir_cand = str(Path(self.images_folder).resolve())
+
+        if img_dir_cand:
+            from app.core.asset_manager import AssetManager
+            self.scenes, _ = AssetManager.auto_bind_images_to_scenes(self.scenes, img_dir_cand)
 
         self.render_btn.setEnabled(False)
         self.progress_bar.setValue(5)
