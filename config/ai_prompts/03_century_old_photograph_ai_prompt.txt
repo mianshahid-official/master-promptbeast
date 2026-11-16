@@ -77,6 +77,45 @@ STYLE DIRECTIVES: CENTURY-OLD PHOTOGRAPH
 - Authentic early 20th-century camera optics: slight natural vignetting at frame corners, natural depth of field, natural directional daylight or period gaslight/oil lantern illumination.
 - Widescreen 16:9 framing capturing historical documentary scale.
 
+4. THE 9 SPECIALIZED ARCHIVAL IMAGE TREATMENTS & DYNAMIC LAYOUTS:
+To create museum-grade historical documentary storytelling, do NOT make every shot a plain centered photo. Instead, selectively apply these 9 specialized treatments based on the narrative context of the scene (or cycle them organically with subtle pacing). Maintain approximately 40-50% of scenes as clean widescreen archival photographic plates so treatments feel intentional, powerful, and cinematic:
+
+1. The Woodblock / Engraving Plate Split:
+   - Description in Visual prompt: Place the 4:6 vintage photograph on one side of the 16:9 frame, paired with an antique copperplate engraving, woodcut illustration, or hand-drawn architectural sketch of the same location or subject on the other side.
+   - Best Context: Blueprints, early architectural origins, city foundations, or comparing ancient sketches with photographic reality.
+
+2. The Accordion / Leporello Souvenir Folder:
+   - Description in Visual prompt: Show the 4:6 vertical image as one panel of an unfolding 19th-century accordion-style souvenir postcard booklet, with adjacent panels peeking out at slight angles across the horizontal 16:9 frame.
+   - Best Context: Expeditions, traveling across regions, tourist vistas, or passage of distance/time.
+
+3. Silver Mirroring & Chemical Bleeding:
+   - Description in Visual prompt: Add iridescent, metallic silver discoloration around the dark edges of the frame (common in aging silver gelatin prints).
+   - Best Context: Dramatic night operations, deep shadowy scenes, dark interior scenes, or intense, somber moments.
+
+4. Fold Creases & Crushed Paper Texture:
+   - Description in Visual prompt: Add subtle cross-hatch folding lines or creases as if the photo was folded up and kept in a pocket or diary for decades.
+   - Best Context: Personal memories, soldier letters, intimate portraits, secret plans, or years of struggle.
+
+5. The Double-Exposure / Diptych Split:
+   - Description in Visual prompt: Place two related 4:6 vertical photos side-by-side inside the 16:9 frame, set against an aged parchment or dark wooden desk background, showing a wide shot next to a close-up detail.
+   - Best Context: Contrasting broad context with intimate focus (e.g. wide battlefield next to a soldier's hands/weapon, cause and effect).
+
+6. The Polarized / Document Archive Layout:
+   - Description in Visual prompt: Center a single 4:6 vertical photo tilted slightly on a textured surface (like old leather, a vintage map, or coarse linen), with paper clips, handwritten notes, or a magnifying glass overlapping the border in the extra horizontal space.
+   - Best Context: Investigative evidence, confidential telegrams, treaties, espionage, forensic history.
+
+7. The Cinematic Split-Screen Trio:
+   - Description in Visual prompt: Place three vertical 4:6 frames staggered across the 16:9 canvas (one slightly overlapping the other), creating a dynamic collage effect for fast-paced historical narration.
+   - Best Context: Fast-paced montages, simultaneous actions occurring in different places, multi-party events.
+
+8. Textured Cinematic Blur Background:
+   - Description in Visual prompt: Center your crisp 4:6 vertical image in the middle of the 16:9 frame, and use a heavily blurred, darkened, and desaturated version of the same image (or a matching vintage texture) to fill the left and right side wings.
+   - Best Context: Focused single-character portraits or iconic centerpiece figures requiring dramatic cinematic depth.
+
+9. Antique Map Overlay:
+   - Description in Visual prompt: Place the historical photograph over a detailed antique geographical map of the relevant location, including compass roses, faded borders, geographical markings, old routes, and handwritten location annotations.
+   - Best Context: Military troop marches, territorial campaigns, voyages, borders, or strategic travel routes.
+
 ================================================================================
 PART 2: PRODUCTION BIBLES FORMAT SPECIFICATION
 ================================================================================

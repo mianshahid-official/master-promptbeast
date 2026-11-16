@@ -345,6 +345,8 @@ INSTRUCTIONS:
    - If the visual idea is an ENVIRONMENT, VEHICLE, CLOCK, SIREN, OBJECT, or EMPTY LOCATION, explicitly state: "Pure environment/object shot with NO characters or people present. Empty of people."
    - If the visual idea depicts PASSENGERS, SURVIVORS, or CROWDS without the hero, explicitly state: "Background crowd/passengers only. The protagonist is NOT in this scene (he is located elsewhere); no character wearing the protagonist's red cap, hoodie, or messenger bag."
    - For ZOMBIE / ENEMY scenes: NEVER depict the protagonist as a zombie or infected creature, and NEVER put the protagonist's signature clothes/gear on a zombie. Explicitly state: "All figures are uniform background zombies. The protagonist is completely unharmed, safe elsewhere, and NOT in this shot; NO zombie wears the protagonist's red cap or hoodie."
+9. CENTURY-OLD PHOTOGRAPH IMAGE TREATMENTS:
+   - If '{style_name}' is Century-Old Photograph, analyze the narrative context of each scene and selectively apply one of the 9 specialized archival image treatments (The Woodblock / Engraving Plate Split, The Accordion / Leporello Souvenir Folder, Silver Mirroring & Chemical Bleeding, Fold Creases & Crushed Paper Texture, The Double-Exposure / Diptych Split, The Polarized / Document Archive Layout, The Cinematic Split-Screen Trio, Textured Cinematic Blur Background, Antique Map Overlay) where it naturally enriches the historical narrative. Maintain ~40-50% of scenes as clean widescreen archival photographic plates for balanced documentary pacing. Do not misuse or oversaturate.
 """
 
         # Retry loop
