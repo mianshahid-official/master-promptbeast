@@ -1042,8 +1042,10 @@ class MainWindow(QMainWindow):
                     p_name = self.generate_project_name_from_script(raw_s) if raw_s else f"Project_{datetime.now().strftime('%Y%m%d_%H%M')}"
                     if hasattr(self, "proj_name_input"):
                         self.proj_name_input.setText(p_name)
-                candidate1 = Path(self.settings.workspace_directory) / p_name
-                candidate2 = Path(self.settings.workspace_directory) / "projects" / p_name
+                ws_dir = Path(self.settings.workspace_directory)
+                target_root = ws_dir if ws_dir.name.lower() == "projects" else ws_dir / "projects"
+                candidate1 = target_root / p_name
+                candidate2 = ws_dir / "projects" / p_name
                 candidate3 = Path("projects") / p_name
                 if candidate1.exists():
                     self.project.project_dir = str(candidate1.resolve())
@@ -1086,8 +1088,10 @@ class MainWindow(QMainWindow):
                     p_name = self.generate_project_name_from_script(raw_s) if raw_s else f"Project_{datetime.now().strftime('%Y%m%d_%H%M')}"
                     if hasattr(self, "proj_name_input"):
                         self.proj_name_input.setText(p_name)
-                candidate1 = Path(self.settings.workspace_directory) / p_name
-                candidate2 = Path(self.settings.workspace_directory) / "projects" / p_name
+                ws_dir = Path(self.settings.workspace_directory)
+                target_root = ws_dir if ws_dir.name.lower() == "projects" else ws_dir / "projects"
+                candidate1 = target_root / p_name
+                candidate2 = ws_dir / "projects" / p_name
                 candidate3 = Path("projects") / p_name
                 if candidate1.exists():
                     self.project.project_dir = str(candidate1.resolve())
@@ -2648,7 +2652,9 @@ class MainWindow(QMainWindow):
                 if not p_name or p_name == "Untitled_Project":
                     raw_s = self.story_text_edit.toPlainText().strip() if hasattr(self, "story_text_edit") else ""
                     p_name = self.generate_project_name_from_script(raw_s) if raw_s else f"Project_{datetime.now().strftime('%Y%m%d_%H%M')}"
-                self.project.project_dir = str((Path(self.settings.workspace_directory) / "projects" / p_name).resolve())
+                ws_dir = Path(self.settings.workspace_directory)
+                target_root = ws_dir if ws_dir.name.lower() == "projects" else ws_dir / "projects"
+                self.project.project_dir = str((target_root / p_name).resolve())
 
             p_dir = Path(self.project.project_dir)
             p_dir.mkdir(parents=True, exist_ok=True)

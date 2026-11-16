@@ -86,8 +86,8 @@ class MultiAccountGenerationDialog(QDialog):
             "Google accounts typically allow ~100 image generations per day. "
             "To generate long stories without hitting limits or mixing scenes, PromptBeast automatically splits "
             "your prompts into 100-item batches mapped to separate Chrome profiles. "
-            "Each profile downloads directly into its dedicated subfolder (images/acc1, images/acc2, etc.) "
-            "and PromptBeast re-stitches all scenes in exact chronological order."
+            "All profiles download directly into your main project images folder without any subfolders, "
+            "and PromptBeast automatically sequences and numbers all images in chronological order."
         )
         desc_lbl.setStyleSheet("font-size: 11px; color: #94A3B8; line-height: 1.4;")
         desc_lbl.setWordWrap(True)
@@ -132,8 +132,8 @@ class MultiAccountGenerationDialog(QDialog):
             p_info = profiles_info.get(acc_name, {})
             is_signed = p_info.get("is_signed_in", False)
 
-            # Account subfolder
-            acc_dir = self.images_dir if acc_num == 1 else (self.images_dir / acc_name)
+            # All accounts download directly into self.images_dir (NO subfolders)
+            acc_dir = self.images_dir
             acc_dir.mkdir(parents=True, exist_ok=True)
 
             card = self._create_batch_card(
@@ -278,7 +278,7 @@ class MultiAccountGenerationDialog(QDialog):
         name_row.addStretch()
         acc_box.addLayout(name_row)
 
-        range_lbl = QLabel(f"Prompts #{start_num} to #{end_num} ({count} images)  →  {acc_dir.name}/")
+        range_lbl = QLabel(f"Prompts #{start_num} to #{end_num} ({count} images)  →  {self.images_dir.name}/")
         range_lbl.setStyleSheet("font-size: 11px; color: #94A3B8;")
         acc_box.addWidget(range_lbl)
         row.addLayout(acc_box, 1)

@@ -937,10 +937,6 @@ class ImagesPanel(QWidget):
         # -------------------------------------------------------------
         extracted_from_project = self._auto_extract_zip_files(dest_dir)
 
-        # Check subfolders (e.g. acc1, acc2, batch1)
-        for sdir in [p for p in dest_dir.iterdir() if p.is_dir() and not p.name.startswith(".")]:
-            extracted_from_project += self._auto_extract_zip_files(sdir)
-
         # Also check project root for any accidentally dropped ZIP
         if self._project_dir and Path(self._project_dir).exists():
             for p_zip in list(Path(self._project_dir).glob("*.zip")):
@@ -1076,22 +1072,13 @@ class ImagesPanel(QWidget):
 
         target_path = Path(self.images_folder)
 
-        # Auto-extract any zip files in the images folder first
+        # Auto-extract any zip files in the images folder and flatten any subfolders first
         self._auto_extract_zip_files(target_path)
 
         exts = (".jpg", ".jpeg", ".png", ".webp")
-        all_files = []
-
-        # 1. Direct image files in images folder
-        direct_files = [p for p in target_path.iterdir() if p.is_file() and p.suffix.lower() in exts]
-        all_files.extend(sorted(direct_files, key=natural_sort_key))
-
-        # 2. Subfolders (e.g. acc1, acc2, acc3, batch1, batch2) in natural sorted order
-        subdirs = [p for p in target_path.iterdir() if p.is_dir() and not p.name.startswith(".")]
-        for sdir in sorted(subdirs, key=natural_sort_key):
-            self._auto_extract_zip_files(sdir)
-            sub_files = [p for p in sdir.iterdir() if p.is_file() and p.suffix.lower() in exts]
-            all_files.extend(sorted(sub_files, key=natural_sort_key))
+        # All images are now placed directly in target_path (single flat folder)
+        all_files = [p for p in target_path.iterdir() if p.is_file() and p.suffix.lower() in exts]
+        all_files = sorted(all_files, key=natural_sort_key)
 
         self.image_files = [str(p.resolve()) for p in all_files]
         count = len(self.image_files)

@@ -79,6 +79,91 @@ class AssetManager:
         return highest
 
     @classmethod
+    def consolidate_and_flatten_subfolders(cls, target_dir: Path) -> int:
+        """
+        Scans target_dir for any accidental subfolders (e.g. acc1, acc2, acc3, batch1, etc.).
+        If subfolders contain images or zips:
+          - Moves any zips directly into target_dir
+          - Renames any loose subfolder images sequentially (continuing from target_dir's current highest)
+          - Moves them directly out into target_dir
+          - Moves any archive zips to target_dir/.extracted_zips
+          - Deletes the empty subfolders so target_dir remains a clean, single-level flat directory.
+        Returns total number of images flattened into target_dir.
+        """
+        import shutil
+        if not target_dir.exists() or not target_dir.is_dir():
+            return 0
+
+        subdirs = [
+            d for d in target_dir.iterdir()
+            if d.is_dir() and not d.name.startswith(".") and d.name != ".extracted_zips" and d.name != ".thumbnails"
+        ]
+        if not subdirs:
+            return 0
+
+        subdirs.sort(key=natural_sort_key)
+        total_flattened = 0
+        archive_dir = target_dir / ".extracted_zips"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        for sdir in subdirs:
+            # 1. Check for any zips inside sdir and move them to target_dir for extraction
+            for z in list(sdir.glob("*.zip")):
+                dest_zip = target_dir / z.name
+                if dest_zip.exists():
+                    dest_zip = target_dir / f"{sdir.name}_{z.name}"
+                shutil.move(str(z), str(dest_zip))
+
+            # Move any inner .extracted_zips to target_dir/.extracted_zips
+            inner_ext = sdir / ".extracted_zips"
+            if inner_ext.exists():
+                for z in inner_ext.glob("*.zip"):
+                    dest_z = archive_dir / z.name
+                    if not dest_z.exists():
+                        shutil.move(str(z), str(dest_z))
+                shutil.rmtree(str(inner_ext), ignore_errors=True)
+
+            # 2. Find all loose images in sdir
+            sub_images = [f for f in sdir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
+            if sub_images:
+                sub_images.sort(key=natural_sort_key)
+                current_highest = cls.get_highest_scene_number_in_folder(target_dir)
+
+                # Check if already uniquely sequenced above current_highest
+                inner_nums = [extract_scene_number_from_filename(f.name) for f in sub_images]
+                valid_inner = [n for n in inner_nums if n > 0]
+                already_sequenced = (len(valid_inner) == len(sub_images) and min(valid_inner) > current_highest)
+
+                for idx, img_f in enumerate(sub_images):
+                    fname_lower = img_f.name.lower()
+                    if fname_lower.startswith(("000_thumb", "thumb", "cover")) or "thumbnail" in fname_lower:
+                        dest_path = target_dir / f"000_thumbnail{img_f.suffix.lower()}"
+                        shutil.move(str(img_f), str(dest_path))
+                        total_flattened += 1
+                        continue
+
+                    if already_sequenced:
+                        target_seq_num = valid_inner[idx]
+                    else:
+                        target_seq_num = current_highest + idx + 1
+
+                    dest_path = target_dir / f"{target_seq_num:03d}{img_f.suffix.lower()}"
+                    while dest_path.exists():
+                        target_seq_num += 1
+                        dest_path = target_dir / f"{target_seq_num:03d}{img_f.suffix.lower()}"
+
+                    shutil.move(str(img_f), str(dest_path))
+                    total_flattened += 1
+
+            # 3. Clean up the empty subfolder
+            try:
+                shutil.rmtree(str(sdir), ignore_errors=True)
+            except Exception:
+                pass
+
+        return total_flattened
+
+    @classmethod
     def extract_and_sequentially_rename_zips(cls, target_dir: Path) -> int:
         """
         Extracts all .zip files in target_dir (and subdirs) using a temporary folder,
@@ -95,6 +180,8 @@ class AssetManager:
 
         if not target_dir.exists():
             return 0
+
+        total_extracted = cls.consolidate_and_flatten_subfolders(target_dir)
 
         # Collect all candidate zip files in target_dir (and subdirectories like acc1, acc2)
         zip_files: List[Path] = []
@@ -192,6 +279,7 @@ class AssetManager:
             except Exception as e:
                 print(f"[AssetManager] Error processing zip {zip_p.name}: {e}")
 
+        total_extracted += cls.consolidate_and_flatten_subfolders(target_dir)
         return total_extracted
 
     @classmethod
@@ -199,6 +287,9 @@ class AssetManager:
         path = Path(folder_path)
         if not path.exists() or not path.is_dir():
             return []
+
+        # Automatically flatten any accidental subfolders into the main directory
+        cls.consolidate_and_flatten_subfolders(path)
 
         images = []
         for file in sorted(path.iterdir(), key=natural_sort_key):
